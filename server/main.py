@@ -1,16 +1,12 @@
 from pydantic import BaseModel, validator
-import shelve
 from typing import List
-from fastapi import FastAPI, Path
+from fastapi import FastAPI, Path, Depends
+import json
 import time
 
-db = {
-    "parameters": {"A": 0, "B": 0, "C": 0, "D": 0, "E": 0},
-    "component_types": ["a", "b", "c"],
-    "panels": {
-        1676121800: ["A_a", "B_b", "C_c", "A_a", "B_b", "C_c", "A_a", "B_b", "C_c"]
-    }
-}
+# Load data from a JSON file
+with open('database.json', 'rt') as data:
+    db = json.load(data)
 
 
 class Grid(BaseModel):
@@ -43,6 +39,7 @@ class Grid(BaseModel):
 
 class Param(BaseModel):
     value: int
+
     @validator('value')
     def length_validation(cls, val):
         if not -100 <= val <= 100:
@@ -51,6 +48,8 @@ class Param(BaseModel):
 
 
 app = FastAPI()
+
+
 # get all parameters
 @app.get("/parameters")
 async def getParameters():
@@ -59,10 +58,12 @@ async def getParameters():
 
 # change parameter value
 @app.put("/parameters/{param_id}")
-async def editParameter(*, param_id: str = Path(None, description="The id of parameter you want to change"), val: Param):
+async def editParameter(*, param_id: str = Path(description="The id of parameter you want to change"), val: Param):
     if param_id not in db["parameters"]:
         return {"Error": "Parameter does not exist"}
     db["parameters"].update({param_id: val.value})
+    with open('database.json', 'w') as data:
+        json.dump(db["parameters"], data)
     return {"Message": "Parameter updated successfully"}
 
 
@@ -77,12 +78,14 @@ async def getPanels():
 async def createPanel(panel: Grid):
     timestamp = int(time.time())
     db["panels"].update({timestamp: panel.items})
+    with open('database.json', 'w') as data:
+        json.dump(db, data)
     return db["panels"][timestamp]
 
 
 # get panel
 @app.get("/{panel_id}")
-async def getPanel(panel_id: int = Path(None, description="The timestamp of panel you want to use", gt=0)):
+async def getPanel(panel_id: int = Path(description="The timestamp of panel you want to use", gt=0)):
     if db["panels"][panel_id]:
         return db["panels"][panel_id]
     return {"Error": "Not found!"}
@@ -90,17 +93,22 @@ async def getPanel(panel_id: int = Path(None, description="The timestamp of pane
 
 # edit panel
 @app.put("/{panel_id}")
-async def editPanel(*, panel_id: int = Path(None, description="The timestamp of panel you want to edit"), panel: Grid):
+async def editPanel(*, panel_id: int = Path(description="The timestamp of panel you want to edit"), panel: Grid):
     if panel_id not in db["panels"]:
         return {"Error": "Panel does not exist"}
+    print(panel.items)
     db["panels"].update({panel_id: panel.items})
+    with open('database.json', 'w') as data:
+        json.dump(db, data)
     return db["panels"][panel_id]
 
 
 # delete panel
 @app.delete("/{panel_id}")
-async def deletePanel(panel_id: int = Path(None, description="The timestamp of panel you want to delete")):
+async def deletePanel(panel_id: int = Path(description="The timestamp of panel you want to delete")):
     if panel_id not in db["panels"]:
         return {"Error": "Panel does not exist"}
     del db["panels"][panel_id]
+    with open('database.json', 'w') as data:
+        json.dump(db, data)
     return {"Message": "Panel deleted succesfully"}
